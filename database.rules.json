@@ -1,0 +1,21 @@
+{
+  "rules": {
+    "trips": {
+      "$tripId": {
+        ".read": true,
+        "seats": {
+          "$seatId": {
+            ".write": true
+          }
+        }
+      }
+    },
+    "bookings": {
+      ".read": true,
+      ".indexOn": ["passengerPhone"],
+      "$bookingId": {
+        ".write": true
+      }
+    }
+  }
+}
