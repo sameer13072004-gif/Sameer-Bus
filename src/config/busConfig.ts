@@ -14,9 +14,9 @@ export interface BusRoute {
   badgeText: string;
 }
 
-export const BUS_NAME = 'Sameer Bus (AC Seater 2x2)';
-export const BRAND_NAME = 'Sameer Bus';
-export const PRICE_PER_SEAT = 1; // ₹1 per seat for testing phase
+export const BUS_NAME = 'Majid Bus (AC Seater 2x2)';
+export const BRAND_NAME = 'Majid Bus';
+export const PRICE_PER_SEAT = 400; // ₹400 per seat
 export const CURRENCY_SYMBOL = '₹';
 export const HOLD_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 

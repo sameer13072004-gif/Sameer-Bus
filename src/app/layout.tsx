@@ -11,15 +11,15 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  applicationName: 'Sameer Bus',
-  title: 'Sameer Bus | Noida ↔ Rampur (UP) Seat Booking',
+  applicationName: 'Majid Bus',
+  title: 'Majid Bus | Noida ↔ Rampur (UP) Seat Booking',
   description:
     'Book AC Seater 2x2 bus seats between Sector 34 Metro Station (Noida) and Shehnai Mandap, Shahbad Gate (Rampur) with instant QR boarding pass.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Sameer Bus',
+    title: 'Majid Bus',
   },
   icons: {
     icon: [

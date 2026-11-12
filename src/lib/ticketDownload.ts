@@ -323,7 +323,7 @@ export async function downloadTicketPng(
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  const filename = `SameerBus-Ticket-${booking.bookingId}.png`;
+  const filename = `MajidBus-Ticket-${booking.bookingId}.png`;
 
   await new Promise<void>((resolve) => {
     canvas.toBlob(

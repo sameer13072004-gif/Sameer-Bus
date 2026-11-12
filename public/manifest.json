@@ -1,6 +1,6 @@
 {
-  "name": "Sameer Bus",
-  "short_name": "Sameer Bus",
+  "name": "Majid Bus",
+  "short_name": "Majid Bus",
   "description": "Book AC Seater 2x2 bus tickets between Noida and Rampur (UP) with instant QR boarding pass.",
   "start_url": "/",
   "scope": "/",
