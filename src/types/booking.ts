@@ -37,10 +37,22 @@ export interface BookingRecord {
   razorpayPaymentId?: string;
   status: 'PAID';
   sessionId: string;
+  userId?: string | null;
+  userEmail?: string | null;
+  boarded?: boolean;
+  boardedAt?: number | null;
   createdAt: number;
 }
 
-export type ActiveTab = 'book' | 'tickets' | 'verify';
+export interface AuthUserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+}
+
+export type AppView = 'book' | 'tickets';
+export type BookingStep = 'route_date' | 'seats' | 'confirmed';
 
 export interface ToastMessage {
   id: string;

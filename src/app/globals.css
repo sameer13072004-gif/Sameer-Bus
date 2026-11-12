@@ -6,7 +6,6 @@
   --color-crimson-tint: #FFF1F2;
   --color-ink: #0F172A;
   --font-sans: var(--font-plus-jakarta), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 :root {

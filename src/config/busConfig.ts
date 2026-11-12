@@ -20,10 +20,15 @@ export const PRICE_PER_SEAT = 1; // ₹1 per seat for testing phase
 export const CURRENCY_SYMBOL = '₹';
 export const HOLD_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
+export const PUBLIC_VERIFY_BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, '') ||
+  'https://sameer-bus.vercel.app';
+
+export const STAFF_VERIFY_PIN = '8988';
+
 export const SUPPORT_CONTACT = {
   phoneDisplay: '8178628988',
   phoneE164: '+918178628988',
-  whatsappDigits: '918178628988',
   telHref: 'tel:+918178628988',
 };
 
@@ -75,12 +80,8 @@ export function buildTripId(date: string, routeId: RouteId): string {
   return `${date}_${routeId}`;
 }
 
-export function buildWhatsAppInquiryUrl(params: {
-  bookingId: string;
-  routeLabel: string;
-  date: string;
-  seats: string[];
-}): string {
-  const message = `Hello Sameer Bus Team, I have booked ticket ${params.bookingId} for ${params.routeLabel} on ${params.date} (Seat: ${params.seats.join(', ')}). Could you please confirm the live arrival/departure status of the bus?`;
-  return `https://wa.me/${SUPPORT_CONTACT.whatsappDigits}?text=${encodeURIComponent(message)}`;
+export function buildStaffVerifyQrUrl(bookingId: string, seatCount: number): string {
+  return `${PUBLIC_VERIFY_BASE_URL}/staff-verify?id=${encodeURIComponent(
+    bookingId
+  )}&seats=${Math.max(1, seatCount)}`;
 }

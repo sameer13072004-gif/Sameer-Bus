@@ -12,9 +12,15 @@
     },
     "bookings": {
       ".read": true,
-      ".indexOn": ["passengerPhone"],
+      ".indexOn": ["passengerPhone", "userId"],
       "$bookingId": {
-        ".write": true
+        ".write": "!data.exists()",
+        "boarded": {
+          ".write": "root.child('bookings').child($bookingId).exists() && data.val() !== true && newData.val() === true"
+        },
+        "boardedAt": {
+          ".write": "root.child('bookings').child($bookingId).exists() && newData.isNumber()"
+        }
       }
     }
   }

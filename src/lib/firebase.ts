@@ -13,11 +13,24 @@ import {
   type Unsubscribe,
 } from 'firebase/database';
 import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signOut,
+  onAuthStateChanged,
+  type Auth,
+  type User,
+} from 'firebase/auth';
+import {
   HOLD_DURATION_MS,
   PRICE_PER_SEAT,
   type BusRoute,
 } from '@/config/busConfig';
 import type {
+  AuthUserProfile,
   BookingRecord,
   EffectiveSeatState,
   SeatRecord,
@@ -71,18 +84,151 @@ export function isFirebaseConfigured(): boolean {
 
 let cachedApp: FirebaseApp | null = null;
 let cachedDb: Database | null = null;
+let cachedAuth: Auth | null = null;
+
+export function getFirebaseApp(): FirebaseApp {
+  if (cachedApp) return cachedApp;
+  if (!isFirebaseConfigured()) {
+    throw new Error(
+      'Firebase is not configured. Check NEXT_PUBLIC_FIREBASE_* variables in .env.local.'
+    );
+  }
+  cachedApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  return cachedApp;
+}
 
 export function getRealtimeDb(): Database {
   if (cachedDb) return cachedDb;
-  if (!isFirebaseConfigured()) {
-    throw new Error(
-      'Firebase Realtime Database is not configured. Check NEXT_PUBLIC_FIREBASE_* variables in .env.local.'
-    );
-  }
-
-  cachedApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  cachedDb = getDatabase(cachedApp);
+  cachedDb = getDatabase(getFirebaseApp());
   return cachedDb;
+}
+
+export function getFirebaseAuthInstance(): Auth {
+  if (cachedAuth) return cachedAuth;
+  cachedAuth = getAuth(getFirebaseApp());
+  return cachedAuth;
+}
+
+function toAuthProfile(user: User | null): AuthUserProfile | null {
+  if (!user) return null;
+  return {
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName,
+    photoURL: user.photoURL,
+  };
+}
+
+function formatAuthError(error: unknown): Error {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code?: unknown }).code ?? '')
+      : '';
+
+  switch (code) {
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return new Error('Sign-in popup was closed before completing.');
+    case 'auth/popup-blocked':
+      return new Error('Pop-up blocked by browser. Please allow pop-ups and try again.');
+    case 'auth/operation-not-allowed':
+      return new Error(
+        'This sign-in method is not enabled yet in Firebase Authentication Console.'
+      );
+    case 'auth/unauthorized-domain':
+      return new Error(
+        'This domain is not authorized in Firebase Authentication settings.'
+      );
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return new Error('Incorrect email or password. Please check and try again.');
+    case 'auth/invalid-email':
+      return new Error('Please enter a valid email address.');
+    case 'auth/email-already-in-use':
+      return new Error('An account already exists with this email. Use Sign In instead.');
+    case 'auth/weak-password':
+      return new Error('Password must be at least 6 characters long.');
+    case 'auth/too-many-requests':
+      return new Error('Too many attempts. Please wait a minute and try again.');
+    default:
+      return error instanceof Error
+        ? error
+        : new Error('Unable to sign in right now. Please try again.');
+  }
+}
+
+export function subscribeToAuth(
+  onUserChange: (user: AuthUserProfile | null) => void
+): () => void {
+  if (!isFirebaseConfigured()) {
+    onUserChange(null);
+    return () => {};
+  }
+  const auth = getFirebaseAuthInstance();
+  return onAuthStateChanged(auth, (user) => {
+    onUserChange(toAuthProfile(user));
+  });
+}
+
+export async function signInWithGoogle(): Promise<AuthUserProfile> {
+  try {
+    const auth = getFirebaseAuthInstance();
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const credential = await signInWithPopup(auth, provider);
+    const profile = toAuthProfile(credential.user);
+    if (!profile) {
+      throw new Error('Google sign-in did not return an account.');
+    }
+    return profile;
+  } catch (error) {
+    throw formatAuthError(error);
+  }
+}
+
+export async function signInWithEmail(
+  email: string,
+  password: string
+): Promise<AuthUserProfile> {
+  try {
+    const auth = getFirebaseAuthInstance();
+    const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+    const profile = toAuthProfile(credential.user);
+    if (!profile) {
+      throw new Error('Sign-in failed.');
+    }
+    return profile;
+  } catch (error) {
+    throw formatAuthError(error);
+  }
+}
+
+export async function registerWithEmail(
+  email: string,
+  password: string,
+  displayName?: string
+): Promise<AuthUserProfile> {
+  try {
+    const auth = getFirebaseAuthInstance();
+    const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    if (displayName && displayName.trim().length > 0) {
+      await updateProfile(credential.user, { displayName: displayName.trim() });
+    }
+    const profile = toAuthProfile(credential.user);
+    if (!profile) {
+      throw new Error('Account creation failed.');
+    }
+    return profile;
+  } catch (error) {
+    throw formatAuthError(error);
+  }
+}
+
+export async function logoutAccount(): Promise<void> {
+  if (!isFirebaseConfigured()) return;
+  const auth = getFirebaseAuthInstance();
+  await signOut(auth);
 }
 
 export function isSeatEffectivelyAvailable(
@@ -158,14 +304,13 @@ export async function toggleSeatHold(
 
     if (current && current.status === 'booked') {
       detectedConflict = 'conflict_booked';
-      return undefined; // Abort transaction
+      return undefined;
     }
 
     const isExpired =
       current?.status === 'held' &&
       Boolean(current.holdExpiresAt && current.holdExpiresAt < txNow);
 
-    // If currently held by THIS session and NOT expired -> toggle OFF (release)
     if (
       current &&
       current.status === 'held' &&
@@ -181,7 +326,6 @@ export async function toggleSeatHold(
       } satisfies SeatRecord;
     }
 
-    // If held by another session and NOT expired -> conflict
     if (
       current &&
       current.status === 'held' &&
@@ -189,10 +333,9 @@ export async function toggleSeatHold(
       !isExpired
     ) {
       detectedConflict = 'conflict_held';
-      return undefined; // Abort transaction
+      return undefined;
     }
 
-    // Available or expired hold -> acquire 5-minute lock
     desiredAction = 'held';
     return {
       status: 'held',
@@ -212,7 +355,9 @@ export async function toggleSeatHold(
   const finalVal = result.snapshot.val() as SeatRecord | null;
   return {
     outcome: desiredAction === 'released' ? 'released' : 'held',
-    holdExpiresAt: finalVal?.holdExpiresAt ?? (desiredAction === 'held' ? nextHoldExpiresAt : null),
+    holdExpiresAt:
+      finalVal?.holdExpiresAt ??
+      (desiredAction === 'held' ? nextHoldExpiresAt : null),
   };
 }
 
@@ -326,6 +471,8 @@ export interface FinalizeBookingParams {
   currentSessionId: string;
   paymentMethod: 'razorpay' | 'demo';
   razorpayPaymentId?: string;
+  userId?: string | null;
+  userEmail?: string | null;
 }
 
 export async function finalizeBooking(
@@ -360,12 +507,15 @@ export async function finalizeBooking(
     ...(params.razorpayPaymentId
       ? { razorpayPaymentId: params.razorpayPaymentId }
       : {}),
+    ...(params.userId ? { userId: params.userId } : {}),
+    ...(params.userEmail ? { userEmail: params.userEmail } : {}),
     status: 'PAID',
+    boarded: false,
+    boardedAt: null,
     sessionId: params.currentSessionId,
     createdAt: Date.now(),
   };
 
-  // Mark seats as booked in trips/{tripId}/seats/{seatId}
   await Promise.all(
     sortedSeats.map((seatId) =>
       set(ref(db, `trips/${params.tripId}/seats/${seatId}`), {
@@ -377,7 +527,6 @@ export async function finalizeBooking(
     )
   );
 
-  // Persist booking record to bookings/{bookingId}
   await set(ref(db, `bookings/${bookingId}`), bookingData);
 
   return bookingData;
@@ -393,6 +542,52 @@ export async function getBookingById(
   const snapshot = await get(ref(db, `bookings/${normalized}`));
   if (!snapshot.exists()) return null;
   return snapshot.val() as BookingRecord;
+}
+
+export interface MarkBoardedResult {
+  outcome: 'marked_boarded' | 'already_boarded' | 'not_found';
+  booking: BookingRecord | null;
+}
+
+export async function markBookingAsBoarded(
+  rawBookingId: string
+): Promise<MarkBoardedResult> {
+  const bookingId = rawBookingId.trim().toUpperCase();
+  if (!bookingId) return { outcome: 'not_found', booking: null };
+
+  const db = getRealtimeDb();
+  const existing = await getBookingById(bookingId);
+  if (!existing) {
+    return { outcome: 'not_found', booking: null };
+  }
+  if (existing.boarded === true) {
+    return { outcome: 'already_boarded', booking: existing };
+  }
+
+  const boardedRef = ref(db, `bookings/${bookingId}/boarded`);
+  const tx = await runTransaction(boardedRef, (current: boolean | null) => {
+    if (current === true) {
+      return undefined; // Abort: already boarded
+    }
+    return true;
+  });
+
+  if (!tx.committed) {
+    const latest = await getBookingById(bookingId);
+    return { outcome: 'already_boarded', booking: latest };
+  }
+
+  const boardedAt = Date.now();
+  await set(ref(db, `bookings/${bookingId}/boardedAt`), boardedAt);
+
+  return {
+    outcome: 'marked_boarded',
+    booking: {
+      ...existing,
+      boarded: true,
+      boardedAt,
+    },
+  };
 }
 
 export async function findBookingsByPhone(
@@ -417,13 +612,45 @@ export async function findBookingsByPhone(
     return records.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // Fallback if RTDB security rules do not yet declare ".indexOn": ["passengerPhone"]
     if (message.toLowerCase().includes('index not defined')) {
       const snapshot = await get(bookingsRef);
       if (!snapshot.exists()) return [];
       const all = Object.values(snapshot.val() as Record<string, BookingRecord>);
       return all
         .filter((item) => item?.passengerPhone === cleanPhone)
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    }
+    throw error;
+  }
+}
+
+export async function findBookingsByUserId(
+  userId: string
+): Promise<BookingRecord[]> {
+  if (!userId.trim()) return [];
+
+  const db = getRealtimeDb();
+  const bookingsRef = ref(db, 'bookings');
+
+  try {
+    const indexedQuery = query(
+      bookingsRef,
+      orderByChild('userId'),
+      equalTo(userId)
+    );
+    const snapshot = await get(indexedQuery);
+    if (!snapshot.exists()) return [];
+
+    const records = Object.values(snapshot.val() as Record<string, BookingRecord>);
+    return records.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes('index not defined')) {
+      const snapshot = await get(bookingsRef);
+      if (!snapshot.exists()) return [];
+      const all = Object.values(snapshot.val() as Record<string, BookingRecord>);
+      return all
+        .filter((item) => item?.userId === userId)
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     }
     throw error;
